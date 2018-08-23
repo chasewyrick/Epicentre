@@ -1,6 +1,5 @@
 
-#import <Preferences/PSTableCell.h>
-#import <Preferences/PSSpecifier.h>
+#import <prefs.h>
 
 @interface EpicentreHeaderCell : PSTableCell  {
 	UIImageView *headerView;

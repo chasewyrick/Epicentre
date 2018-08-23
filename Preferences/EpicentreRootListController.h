@@ -1,4 +1,4 @@
-#import <Preferences/PSListController.h>
+#import <prefs.h>
 
 @interface EpicentreRootListController : PSListController {
 	PSSpecifier *sliderLabel;

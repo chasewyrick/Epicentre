@@ -1,7 +1,8 @@
 @interface EPCDraggableRotaryNumberView : UIView {
-	UIPanGestureRecognizer* _panRec;
+	UIPanGestureRecognizer *panRec;
 	UILabel* _label;
 }
+@property (nonatomic, strong) UIPanGestureRecognizer* panRec;
 @property (nonatomic, retain, readonly) NSString* character;
 @property (nonatomic, retain, readonly) NSString* displayableCharacter;
 -(id)initWithDefaultSizeWithCharacter:(NSString*)character;

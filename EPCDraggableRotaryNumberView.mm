@@ -4,6 +4,7 @@
 #import "Common.h"
 
 @implementation EPCDraggableRotaryNumberView
+@synthesize panRec;
 -(id)initWithDefaultSizeWithCharacter:(NSString*)character {
 	if (self = [super initWithFrame:CGRectMake(0, 0, kEPCDraggableRotartyNumberViewDefaultSize, kEPCDraggableRotartyNumberViewDefaultSize)]) {
 		_character = character;
@@ -25,10 +26,13 @@
 		_label.center = self.center;
 		[self addSubview:_label];
 
+		//_label.userInteractionEnabled = YES;
+		
 		//set up dragging recognizer
-		_panRec = [[UIPanGestureRecognizer alloc] initWithTarget:[EPCRingView sharedRingView] action:@selector(viewDragged:)];
-		[self addGestureRecognizer:_panRec];
-
+		self.panRec = [[UIPanGestureRecognizer alloc] initWithTarget:[EPCRingView sharedRingView] action:@selector(viewDragged:)];
+		//self.panRec.delegate = (id<UIGestureRecognizerDelegate>)self;
+		//[self addGestureRecognizer:self.panRec];
+		
 		//tap to enter number
 		UITapGestureRecognizer* tapRec = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapped)];
 		[self addGestureRecognizer:tapRec];

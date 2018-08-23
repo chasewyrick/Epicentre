@@ -1,5 +1,5 @@
 #import <UIKit/UIKit.h>
-#import <Preferences/PSSliderTableCell.h>
+#import <prefs.h>
 
 @interface EpicentreDiscreteSliderTableCell : PSSliderTableCell { }
 @end

@@ -2,6 +2,9 @@
 #import "EPCRingView.h"
 #import "EPCPreferences.h"
 #import "EPCPasscodeChangedAlertHandler.h"
+#import <notify.h>
+
+static BOOL screenIsLocked;
 
 @interface EPCRingView (Private)
 -(void)_setCachedPassword:(NSString*)password;
@@ -10,170 +13,134 @@
 -(void)_setNeedsSetup:(BOOL)needed;
 @end
 
+@interface SBUIPasscodeLockViewSimpleFixedDigitKeypad : UIView
+@end
+@interface SBUISimpleFixedDigitPasscodeEntryField : UIView
+@end
+
+static void passcodeReceived(NSString* plainTextPassword)
+{
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+		if(!screenIsLocked) {
+			if ([[EPCRingView sharedRingView] _needsSetup]) {
+				//set passcode length
+				NSLog(@"Writing passcode info to disk");
+				NSDictionary *permission_prefs = [NSDictionary dictionaryWithObjectsAndKeys:
+				@"mobile", NSFileOwnerAccountName,
+				@"mobile", NSFileGroupOwnerAccountName,
+				[NSNumber numberWithUnsignedLong:0777], NSFilePosixPermissions, nil];
+				[[NSFileManager defaultManager] createDirectoryAtPath:@"/var/mobile/Library/Preferences/Epicentre/" withIntermediateDirectories:YES attributes:permission_prefs error:nil];
+				
+				[[NSFileManager defaultManager] createFileAtPath:kPasscodeLengthPath contents:[[NSString stringWithFormat:@"%i", (int)plainTextPassword.length] dataUsingEncoding:NSUTF8StringEncoding] attributes:nil];
+				
+				NSString* hashedStr = [plainTextPassword MD5String];
+				[[NSFileManager defaultManager] createFileAtPath:kPasscodePath contents:[hashedStr dataUsingEncoding:NSUTF8StringEncoding] attributes:nil];
+				[[EPCRingView sharedRingView] _setCachedPassword:hashedStr];
+				[[EPCRingView sharedRingView] _setNeedsSetup:NO];
+			}
+		}
+	});
+}
+
 %group Main
 
+
+static SBUIPasscodeLockNumberPad* numberPad;
+static UIView* _characterIndicatorsContainerView;
 //remove the passcode dots
-//we hook this higher class instead of TPRevealingRingView because EPCDraggableRotaryNumberView needs this method
-%hook SBSimplePasscodeEntryFieldButton
--(id)_bezierPathForRect:(CGRect)arg1 cornerRadius:(CGFloat)arg2 {
+%hook SBUISimpleFixedDigitPasscodeEntryField
+- (void)layoutSubviews
+{
+	%orig;
+	_characterIndicatorsContainerView = MSHookIvar<UIView *>(self, "_characterIndicatorsContainerView");
+	if (![EPCRingView sharedRingViewExist]) { return; }
+	if ([[EPCRingView sharedRingView] _needsSetup]) { return; }
+	
+	
+	_characterIndicatorsContainerView.alpha = 0;
+}
+%end
+
+
+%hook SBDashBoardPasscodeViewController
+- (void)loadView
+{
+	%orig;
+	if (![EPCRingView sharedRingViewExist]) { return; }
+	if ([[EPCRingView sharedRingView] _needsSetup]) { return; }
+	
+	[[EPCRingView sharedRingView] collapseAnimated:NO];
+}
+- (void)viewWillAppear:(BOOL)arg1
+{
+	%orig;
+	if (![EPCRingView sharedRingViewExist]) { return; }
+	if ([[EPCRingView sharedRingView] _needsSetup]) { return; }
+	
+	[[EPCRingView sharedRingView] collapseAnimated:NO];
+	[[EPCRingView sharedRingView] expandAnimated:YES];
+}
+- (void)viewWillDisappear:(BOOL)arg1
+{
+	%orig;
+	if (![EPCRingView sharedRingViewExist]) { return; }
+	if ([[EPCRingView sharedRingView] _needsSetup]) { return; }
+	
+	[[EPCRingView sharedRingView] collapseAnimated:YES];
+}
+%end
+
+%hook SBUIPasscodeLockViewSimpleFixedDigitKeypad
+- (void)layoutSubviews
+{
+	%orig;
+	if (![EPCRingView sharedRingViewExist]) { return; }
+	((EPCRingView*)[EPCRingView sharedRingView]).center = self.center;
+	[EPCRingView sharedRingView].tag = 45455;
+	if(UIView* tabVi = [self viewWithTag:[EPCRingView sharedRingView].tag]) {
+		[tabVi removeFromSuperview];
+	}
+	
 	if ([[EPCRingView sharedRingView] _needsSetup]) {
-		return %orig;
+		if(numberPad) {numberPad.alpha = 1;}
+		if(_characterIndicatorsContainerView) {_characterIndicatorsContainerView.alpha = 1;}
+		
+		return;
 	}
-	return nil;
+	if(numberPad) {numberPad.alpha = 0;}
+	if(_characterIndicatorsContainerView) {_characterIndicatorsContainerView.alpha = 0;}
+	[self addSubview:[EPCRingView sharedRingView]];
 }
 %end
 
-//add our ring view where the passcode view would be
-%hook SBLockScreenScrollView
--(void)setPasscodeView:(UIView*)arg1 {
-	%orig;
-
-	if ([[EPCRingView sharedRingView] _needsSetup]) return;
-
-	((EPCRingView*)[EPCRingView sharedRingView]).center = arg1.center;
-	[arg1 addSubview:[EPCRingView sharedRingView]];
-
-	//arg1.center = CGPointMake(arg1.center.x + arg1.frame.size.width, arg1.center.y);
-}
-%end
-
-%hook SBLockScreenView
-- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-	//%log;
-
-	%orig;
-
-	BOOL isSwipingTowardsPasscodePage = NO;
-	if ([self associatedScrollViewOffset] > scrollView.contentOffset.x) {
-		isSwipingTowardsPasscodePage = YES;
-		[self setAssociatedScrollViewOffset:scrollView.contentOffset.x];
-	}
-	else if ([self associatedScrollViewOffset] < scrollView.contentOffset.x) {
-		isSwipingTowardsPasscodePage = NO;
-		[self setAssociatedScrollViewOffset:scrollView.contentOffset.x];
-	}
-	else return;
-
-	CGFloat scrollThreshold = (CGRectGetMidX([[UIScreen mainScreen] bounds])) * 0.75; // ~ 140px;
-
-	//NSLog(@"scrollThreshold: %f", scrollThreshold);
-	//NSLog(@"scrollView.contentOffset.x: %f", scrollView.contentOffset.x);
-	//NSLog(@"isSwipingTowardsPasscodePage: %i", (int)isSwipingTowardsPasscodePage);
-
-	if (isSwipingTowardsPasscodePage && scrollView.contentOffset.x < scrollThreshold) {
-		[[EPCRingView sharedRingView] expandAnimated:YES];
-	}
-	else if (!isSwipingTowardsPasscodePage && scrollView.contentOffset.x > scrollThreshold) {
-		[[EPCRingView sharedRingView] collapseAnimated:YES];
-	}
-}
-%new
--(void)setAssociatedScrollViewOffset:(CGFloat)offset {
-	 objc_setAssociatedObject(self, @selector(associatedScrollViewOffset), [NSNumber numberWithFloat:offset], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-%new
--(CGFloat)associatedScrollViewOffset {
-	return [(NSNumber*)objc_getAssociatedObject(self, @selector(associatedScrollViewOffset)) floatValue];
-}
-%new
--(id)copiedViewForPreferencesPreview {
-	return [NSKeyedUnarchiver unarchiveObjectWithData:[NSKeyedArchiver archivedDataWithRootObject:self]];
-}
-%end
 
 //provide our own implementation for the number pad
 %hook SBUIPasscodeLockNumberPad
--(id)initWithDefaultSizeAndLightStyle:(BOOL)arg1 {
-	if ([[EPCRingView sharedRingView] _needsSetup]) return %orig;
-	return nil;
-}
-//TODO move this into iOS 7 group
--(id)initWithDefaultSize {
-	if ([[EPCRingView sharedRingView] _needsSetup]) return %orig;
-	return nil;
-}
-%end
-
-//expand/collapse when swiping to/from passcode page
-%hook SBLockScreenViewController
--(void)lockScreenView:(id)view didScrollToPage:(NSInteger)page {
+- (void)setDelegate:(id)arg1
+{
 	%orig;
-
-	//if the passcode file does not exist, use the setup IMP
-	//else, use the Main IMP
-	if ([[EPCRingView sharedRingView] _needsSetup]) {
-		SBLockScreenView* lockScreenView = [self lockScreenView];
-		NSLog(@"lockScreenView: %@", lockScreenView);
-		//if (!lockScreenView.passcodeView) {
-		//	[lockScreenView setPasscodeView:[[%c(SBUIPasscodeLockViewWithKeypad) alloc] initWithLightStyle:YES]];
-		//}
-		SBUIPasscodeLockViewWithKeypad* passcodeView = lockScreenView.passcodeView;
-		NSLog(@"passcodeView: %@", passcodeView);
-		//inform them they need to enter their passcode to use Epicentre
-		if (page == 99) {
-			if ([passcodeView respondsToSelector:@selector(updateStatusText:subtitle:animated:)]) {
-				[passcodeView updateStatusText:MSHookIvar<UILabel*>(passcodeView, "_statusTitleView").text subtitle:@"Enter your passcode to begin using Epicentre." animated:YES];
-			}
-			else {
-				[passcodeView _updateStatusText:MSHookIvar<UILabel*>(passcodeView, "_statusTitleView").text subtitle:@"Enter your passcode to begin using Epicentre." animated:YES];
-			}
-		}
-		else {
-			//update with blank text so the spacing is correct
-			if ([passcodeView respondsToSelector:@selector(updateStatusText:subtitle:animated:)]) {
-				[passcodeView updateStatusText:MSHookIvar<UILabel*>(passcodeView, "_statusTitleView").text subtitle:@" " animated:YES];
-			}
-			else {
-				[passcodeView _updateStatusText:MSHookIvar<UILabel*>(passcodeView, "_statusTitleView").text subtitle:@" " animated:YES];
-			}
-		}
-	}
-	else {
-		NSLog(@"page: %i", page);
-		if (page == 99) {
-			//scrolled to passcode page
-			NSLog(@"scrolled to passcode page, expanding");
-			[[EPCRingView sharedRingView] expandAnimated:YES];
-		}
-		else {
-			//swiped away from passcode page
-			NSLog(@"scrolled away from passcode page, collapsing");
-			[[EPCRingView sharedRingView] collapseAnimated:YES];
-		}
-	}
-}	
+	numberPad = self;
+}
 %end
+
 %hook SBLockScreenManager
-//grab original passcode, hash it, store it to disk
--(BOOL)attemptUnlockWithPasscode:(NSString*)passcode {
-	//if the one they entered was correct
-	BOOL o = %orig;
-	//if the passcode file does not exist, use the setup IMP
-	//else, use the Main IMP
-	if (o && [[EPCRingView sharedRingView] _needsSetup]) {
-		//set passcode length
-		NSLog(@"Writing passcode info to disk");
-
-		NSLog(@"%i", (int)[[NSFileManager defaultManager] createDirectoryAtPath:@"/var/mobile/Library/Preferences/Epicentre/" withIntermediateDirectories:YES attributes:nil error:nil]);
-
-		[[NSFileManager defaultManager] createFileAtPath:kPasscodeLengthPath contents:[[NSString stringWithFormat:@"%i", (int)passcode.length] dataUsingEncoding:NSUTF8StringEncoding] attributes:nil];
-
-		NSString* hashedStr = [passcode MD5String];
-		[[NSFileManager defaultManager] createFileAtPath:kPasscodePath contents:[hashedStr dataUsingEncoding:NSUTF8StringEncoding] attributes:nil];
-		[[EPCRingView sharedRingView] _setCachedPassword:hashedStr];
-		[[EPCRingView sharedRingView] _setNeedsSetup:NO];
-	}
-	return o;
-}
-%end
-
-%hook SpringBoard
--(void)applicationDidFinishLaunching:(id)application {
+-(void)attemptUnlockWithPasscode:(id)arg1 completion:(/*^block*/id)arg2
+{
 	%orig;
-
-	[[EPCRingView sharedRingView] collapseAnimated:NO];
+	passcodeReceived([arg1 copy]);
 }
-
+- (BOOL)attemptUnlockWithPasscode:(id)arg1
+{
+	BOOL r = %orig;
+	passcodeReceived([arg1 copy]);
+	return r;
+}
+- (BOOL)_attemptUnlockWithPasscode:(id)arg1 mesa:(BOOL)arg2 finishUIUnlock:(BOOL)arg3 completion:(id)arg4
+{
+	BOOL r = %orig;
+	passcodeReceived([arg1 copy]);
+	return r;
+}
 %end
 
 %end
@@ -183,45 +150,52 @@
 @interface SpringBoard (Private)
 -(void)_relaunchSpringBoardNow;
 @end
-void respring() {
-	[(SpringBoard*)[UIApplication sharedApplication] _relaunchSpringBoardNow];
+
+static void respring()
+{
+	system("killall backboardd SpringBoard");//[(SpringBoard*)[UIApplication sharedApplication] _relaunchSpringBoardNow];
+}
+
+static void screenLockStatus(CFNotificationCenterRef center, void* observer, CFStringRef name, const void* object, CFDictionaryRef userInfo)
+{
+    uint64_t state;
+    int token;
+    notify_register_check("com.apple.springboard.lockstate", &token);
+    notify_get_state(token, &state);
+    notify_cancel(token);
+    if (state) {
+        screenIsLocked = YES;
+    } else {
+		NSLog(@"device was unlocked");
+        screenIsLocked = NO;
+    }
 }
 
 %ctor {
 	//if the tweak is disabled, quit
-	if (![[EPCPreferences sharedInstance] isEnabled]) return;
-
-	//even if the user does not have a passcode set we still want to listen for this notification
-	//so the check for no passcode is placed after we register for it
-	//To listen for when the passcode is changed we can either
-	//register for the notification with name com.apple.managedconfiguration.passcodechanged
-	//or hook -[MCProfileManager changePasscodeFrom:to:outError:] (which provides both the old and new pass in plaintext)
-	//we do the former because it is less hooks and does not require an IPC implementation
-	//(as the latter method is fired in Preferences)
-	[[NSNotificationCenter defaultCenter] addObserverForName:@"com.apple.managedconfiguration.passcodechanged" 
-										  object:nil 
-										  queue:nil 
-										  usingBlock:^(NSNotification* notification){
-											  [[NSFileManager defaultManager] removeItemAtPath:kPasscodePath error:nil];
-											  [[EPCRingView sharedRingView] _setNeedsSetup:YES];
-											  [[EPCRingView sharedRingView] _setCachedPassword:nil];
-
-											  //someone please find a better way to handle this besides killing SB
-											  EPCPasscodeChangedAlertHandler* alertHandler = [[EPCPasscodeChangedAlertHandler alloc] init];
-											  [alertHandler displayRespringAlert];
-										  }];
-
-	//listen for respring notification for after above notification is fired
-	CFNotificationCenterAddObserver (CFNotificationCenterGetDarwinNotifyCenter(), 
-									 NULL, 
-									 (CFNotificationCallback)respring, 
-									 CFSTR("com.phillipt.epicentre.respring"), 
-									 NULL, 
-									 0);
-
-	if (![[%c(SBDeviceLockController) sharedController] deviceHasPasscodeSet]) return;
-
-	[[EPCRingView sharedRingView] standardSetup];
-
+	if (![[EPCPreferences sharedInstance] isEnabled]) { return; }
+	
+	[[NSNotificationCenter defaultCenter] addObserverForName:@"com.apple.managedconfiguration.passcodechanged" object:nil queue:nil usingBlock:^(NSNotification* notification){
+		[[NSFileManager defaultManager] removeItemAtPath:kPasscodePath error:nil];
+		[[EPCRingView sharedRingView] _setNeedsSetup:YES];
+		[[EPCRingView sharedRingView] _setCachedPassword:nil];
+		
+		//someone please find a better way to handle this besides killing SB
+		EPCPasscodeChangedAlertHandler* alertHandler = [[EPCPasscodeChangedAlertHandler alloc] init];
+		[alertHandler displayRespringAlert];
+	}];
+	
+	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)respring, CFSTR("com.phillipt.epicentre.respring"), NULL, 0);
+	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, screenLockStatus, CFSTR("com.apple.springboard.lockstate"), NULL, 0);
+	//if (![[%c(SBDeviceLockController) sharedController] deviceHasPasscodeSet]) { return; }
+	
 	%init(Main);
+	
+	[[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+		[[EPCRingView sharedRingView] standardSetup];
+		if (![[EPCRingView sharedRingView] _needsSetup]) {
+			[[EPCRingView sharedRingView] collapseAnimated:NO];
+			[[EPCRingView sharedRingView] expandAnimated:YES];
+		}
+	}];
 }

@@ -14,6 +14,7 @@
 }
 @property (nonatomic, assign, readonly) BOOL isExpanded;
 +(instancetype)sharedRingView;
++ (BOOL)sharedRingViewExist;
 -(NSArray*)mappedFinalButtonPositions;
 -(NSArray*)mappedCollapsedButtonPositions;
 -(void)expandAnimated:(BOOL)animated;
@@ -26,4 +27,5 @@
 -(BOOL)_performUnlockAction;
 -(void)buttonTapped:(EPCDraggableRotaryNumberView*)button;
 -(NSString*)randomDisplayedNumberForActualCharacter:(NSString*)character;
+-(void)viewDragged:(UIPanGestureRecognizer *)gesture ;
 @end

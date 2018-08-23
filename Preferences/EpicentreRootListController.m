@@ -1,6 +1,6 @@
 #include "EpicentreRootListController.h"
 
-static NSInteger specIndex;
+//static NSInteger specIndex;
 static PSSpecifier *sliderSpecifier;
 
 @implementation EpicentreRootListController

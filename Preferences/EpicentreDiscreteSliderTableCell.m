@@ -1,6 +1,6 @@
 #import "EpicentreDiscreteSliderTableCell.h"
 #import <objc/runtime.h>
-#import <Preferences/PSSpecifier.h>
+#import <prefs.h>
 
 @interface PSDiscreteSlider : UISlider
 @end

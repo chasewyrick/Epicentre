@@ -12,6 +12,27 @@
 -(void)_setInitialLockGlyphSize;
 @end
 
+static void unlockDeviceNow(NSString* plainTextPassword)
+{
+	if(!plainTextPassword) {
+		return;
+	}
+	dispatch_async(dispatch_get_main_queue(), ^{
+		SBLockScreenManager* SBLockSH = [objc_getClass("SBLockScreenManager") sharedInstance];
+		if([SBLockSH respondsToSelector:@selector(_attemptUnlockWithPasscode:mesa:finishUIUnlock:completion:)]) {
+			[SBLockSH _attemptUnlockWithPasscode:plainTextPassword mesa:0 finishUIUnlock:1 completion:NULL];
+		} else if([SBLockSH respondsToSelector:@selector(_attemptUnlockWithPasscode:mesa:finishUIUnlock:)]) {
+			[SBLockSH _attemptUnlockWithPasscode:plainTextPassword mesa:0 finishUIUnlock:1];
+		} else if([SBLockSH respondsToSelector:@selector(_attemptUnlockWithPasscode:finishUIUnlock:)]) {
+			[SBLockSH _attemptUnlockWithPasscode:plainTextPassword finishUIUnlock:1];
+		} else if([SBLockSH respondsToSelector:@selector(attemptUnlockWithPasscode:)]) {
+			[SBLockSH attemptUnlockWithPasscode:plainTextPassword];
+		} else if([SBLockSH respondsToSelector:@selector(attemptUnlockWithPasscode:completion:)]) {
+			[SBLockSH attemptUnlockWithPasscode:plainTextPassword completion:NULL];
+		}
+	});
+}
+
 //function for returning the coordinates of an arbitrary element within an arbitrary number of elements with an arbitrary radius around a circle with an arbitrary center
 //TODO better name
 //CGPoint pointForIndex(NSInteger index) withinTotalCount:(NSInteger)totalCount withRadius:(CGFloat)radius fromCenter:(CGPoint)center {
@@ -19,28 +40,44 @@ CGPoint calculatedPlacement(CGFloat index, CGFloat totalCount, CGFloat radius, C
 	return CGPointMake(center.x + radius * cos((2*M_PI * index/totalCount) - M_PI_2), center.y + radius * sin((2*M_PI * index/totalCount) - M_PI_2));
 }
 
+__strong static id _sharedObject = nil;
+
 @implementation EPCRingView
 +(id)sharedRingView {
 	static dispatch_once_t p = 0;
-	__strong static id _sharedObject = nil;
+	
 	 
 	dispatch_once(&p, ^{
 		_sharedObject = [[self alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+		
 	});
 
 	return _sharedObject;
+}
++ (BOOL)sharedRingViewExist
+{
+	if(_sharedObject) {
+		return YES;
+	}
+	return NO;
 }
 -(id)initWithFrame:(CGRect)frame {
 	if (self = [super initWithFrame:frame]) {
 		_needsSetup = NO;
 		_isExpanded = YES;
+		
+		//[self _setSecure:YES];
 	}
 	return self;
 }
 -(void)_setupUI {
 	[self shuffleButtons];
-
-	_chestView = nil;
+	
+	if(!_chestView) {
+		[_chestView removeFromSuperview];
+		_chestView = nil;
+	}	
+	
 	[_buttons removeAllObjects];
 	for (UIView* subview in self.subviews) {
 		[subview removeFromSuperview];
@@ -66,6 +103,8 @@ CGPoint calculatedPlacement(CGFloat index, CGFloat totalCount, CGFloat radius, C
 		[self addSubview:numberView];
 		numberView.frame = CGRectFromString(collapsedPosition[i]);
 		numberView.alpha = 0.0;
+		
+		
 	}
 
 	//instantiate stack
@@ -132,6 +171,7 @@ CGPoint calculatedPlacement(CGFloat index, CGFloat totalCount, CGFloat radius, C
 	}];
 }
 -(BOOL)_evaluateStack {
+	
 	//if it's not the same length just stop here
 	if (!(_enteredStack.length == [self passcodeLength])) return NO;
 
@@ -158,7 +198,9 @@ CGPoint calculatedPlacement(CGFloat index, CGFloat totalCount, CGFloat radius, C
 	[_chestView performPasscodeAcceptedAnimationAnimated:YES withCompletion:^{
 		NSLog(@"inside completion block");
 		//[attemptToUnlockUIFromNotification];
-		ret = [[objc_getClass("SBLockScreenManager") sharedInstance] attemptUnlockWithPasscode:_enteredStack];
+		//ret = [[objc_getClass("SBLockScreenManager") sharedInstance] attemptUnlockWithPasscode:_enteredStack];
+		unlockDeviceNow(_enteredStack);
+		ret = [[objc_getClass("SBLockScreenManager") sharedInstance] isUILocked];
 		NSLog(@"ret: %i", ret);
 	}];
 	return ret;
@@ -394,6 +436,7 @@ CGPoint calculatedPlacement(CGFloat index, CGFloat totalCount, CGFloat radius, C
 	[_enteredStack setString:@""];
 }
 -(void)viewDragged:(UIPanGestureRecognizer *)gesture {
+	NSLog(@"** viewDragged: %@", gesture.view);
 	EPCDraggableRotaryNumberView* numberView = (EPCDraggableRotaryNumberView*)gesture.view;
 	if (gesture.state == UIGestureRecognizerStateBegan) {
 		_prevCoord = [gesture locationInView:numberView];

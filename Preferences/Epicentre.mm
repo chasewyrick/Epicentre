@@ -1,4 +1,4 @@
-#import <Preferences/Preferences.h>
+#import <prefs.h>
 
 @interface EpicentreListController: PSListController {
 }

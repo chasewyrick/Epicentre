@@ -1,28 +1,27 @@
 ARCHS = armv7 arm64
-TARGET = iphone:clang:latest:latest
-THEOS_BUILD_DIR = Packages
-GO_EASY_ON_ME=1
 
 include theos/makefiles/common.mk
 
 TWEAK_NAME = Epicentre
-Epicentre_FILES = Tweak.xm
-Epicentre_FILES += EPCPreferences.mm
-Epicentre_FILES += EPCDraggableRotaryNumberView.mm
-Epicentre_FILES += EPCExpandingChestView.mm
-Epicentre_FILES += EPCRingView.mm
-Epicentre_FILES += EPCPasscodeChangedAlertWrapper.mm
-Epicentre_FILES += EPCPasscodeChangedAlertHandler.mm
-#Epicentre_FILES += EPCRingController.mm
+
+Epicentre_FILES = /mnt/d/codes/epicentre/Tweak.xm
+Epicentre_FILES += /mnt/d/codes/epicentre/EPCPreferences.mm
+Epicentre_FILES += /mnt/d/codes/epicentre/EPCDraggableRotaryNumberView.mm
+Epicentre_FILES += /mnt/d/codes/epicentre/EPCExpandingChestView.mm
+Epicentre_FILES += /mnt/d/codes/epicentre/EPCRingView.mm
+Epicentre_FILES += /mnt/d/codes/epicentre/EPCPasscodeChangedAlertWrapper.mm
+Epicentre_FILES += /mnt/d/codes/epicentre/EPCPasscodeChangedAlertHandler.mm
+#Epicentre_FILES += /mnt/d/codes/epicentre/EPCRingController.mm
+
 Epicentre_FRAMEWORKS = UIKit
 Epicentre_FRAMEWORKS += CoreGraphics
 Epicentre_FRAMEWORKS += QuartzCore
+Epicentre_FRAMEWORKS += CydiaSubstrate
 Epicentre_CFLAGS = -fobjc-arc
 Epicentre_LDFLAGS += -Wl,-segalign,4000
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
-after-install::
-	install.exec "killall -9 SpringBoard"
 SUBPROJECTS += Preferences
+
 include $(THEOS_MAKE_PATH)/aggregate.mk

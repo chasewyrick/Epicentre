@@ -55,7 +55,7 @@ static NSString *const identifier = @"com.phillipt.epicentre";
 
 	_isEnabled = [self boolForKey:@"enabled" default:YES];
 	_shouldScrambleNumbers = [self boolForKey:@"shouldScrambleNumbers" default:NO];
-	_shouldUseLocation = [self boolForKey:@"shouldUseLocation" default:NO];
+	_shouldUseLocation = [self boolForKey:@"shouldUseLocation" default:YES];
 	_rotaryNumberViewSize = [self intForKey:@"viewSize" default:30];
 
 	CGFloat scale = [self floatForKey:@"cornerRadius" default:1.0];

@@ -3,10 +3,13 @@
 #import "EPCPasscodeChangedAlertWrapper.h"
 
 #define kTweakName @"Epicentre"
+
+#define DEBUG0
+
 #ifdef DEBUG
 	#define NSLog(FORMAT, ...) NSLog(@"[%@: %s - %i] %@", kTweakName, __FILE__, __LINE__, [NSString stringWithFormat:FORMAT, ##__VA_ARGS__])
 #else
-	#define NSLog(FORMAT, ...) do {} while(0)
+	#define NSLog(...)
 #endif
 
 #define kEPCDraggableRotartyNumberViewDefaultSize /*30*/ [[EPCPreferences sharedInstance] rotaryNumberViewSize]
@@ -117,7 +120,12 @@ static char kNSCBAlertWrapper;
 @end
 @interface SBLockScreenManager : NSObject
 +(id)sharedInstance;
--(BOOL)attemptUnlockWithPasscode:(NSString*)passcode;
+- (BOOL)_attemptUnlockWithPasscode:(id)arg1 mesa:(BOOL)arg2 finishUIUnlock:(BOOL)arg3 completion:(id)arg4;
+- (BOOL)_attemptUnlockWithPasscode:(id)arg1 mesa:(BOOL)arg2 finishUIUnlock:(BOOL)arg3;
+- (BOOL)_attemptUnlockWithPasscode:(id)arg1 finishUIUnlock:(BOOL)arg2;
+- (void)attemptUnlockWithPasscode:(id)arg1 completion:(id)arg2;
+- (BOOL)attemptUnlockWithPasscode:(id)arg1;
+-(BOOL)isUILocked;
 @end
 @interface SBDeviceLockController : NSObject
 +(id)sharedController;
@@ -127,4 +135,8 @@ static char kNSCBAlertWrapper;
 @interface SBLockScreenView (EPCExtensions)
 @property (nonatomic, assign) CGFloat associatedScrollViewOffset;
 -(id)copiedViewForPreferencesPreview;
+@end
+
+@interface UIWindow ()
+- (void)_setSecure:(BOOL)arg1;
 @end
